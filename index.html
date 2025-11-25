@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="no-referrer">
+    <title>超级日历 V6.2 - 布局优化版</title>
+    
+    <!-- CDN -->
+    <link href="https://cdn.staticfile.org/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.staticfile.org/vue/3.3.4/vue.global.prod.min.js"></script>
+    
+    <style>
+        #app-loading { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #f8fafc; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .spinner { width: 40px; height: 40px; border: 4px solid #e2e8f0; border-top: 4px solid #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        [v-cloak] { display: none !important; }
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        .hidden-input { display: none; }
+        
+        .center-cell { transform: scale(1.02); box-shadow: 0 0 0 2px #3b82f6, 0 12px 24px -8px rgba(0, 0, 0, 0.15); z-index: 50 !important; border-radius: 8px; background-color: #fff !important; }
+        .day-cell { transition: all 0.2s ease-out; }
+        .completed-task { text-decoration: line-through; opacity: 0.6; filter: grayscale(100%); }
+        .day-banner { transition: background 0.3s ease; background-position: center; background-size: cover; }
+        
+        .nav-btn { padding: 5px 12px; font-size: 13px; font-weight: 600; color: #64748b; transition: all 0.2s; border-right: 1px solid #e2e8f0; }
+        .nav-btn:last-child { border-right: none; }
+        .nav-btn:hover { background-color: #f8fafc; color: #2563eb; }
+        .view-btn { padding: 6px 12px; font-size: 12px; color: #64748b; transition: all 0.2s; border-right: 1px solid #e2e8f0; display: flex; align-items: center; gap: 4px; }
+        .view-btn:last-child { border-right: none; }
+        .view-btn:hover { background-color: #f8fafc; color: #2563eb; }
+        .view-btn.active { background-color: #eff6ff; color: #2563eb; font-weight: bold; box-shadow: inset 0 2px 4px 0 rgba(0,0,0,0.05); }
+        .action-btn { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 6px; transition: all 0.2s; color: #64748b; border: 1px solid transparent; }
+        .action-btn:hover { background-color: #f1f5f9; color: #0f172a; border-color: #e2e8f0; }
+        .action-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+        .today-number { background-color: #ef4444 !important; color: white !important; box-shadow: 0 0 0 3px rgba(254, 226, 226, 0.5); animation: pulse-today 2s infinite; }
+        @keyframes pulse-today { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); } 100% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); } }
+        .weekend-text { color: #f97316; } .weekend-bg { background-color: #fff7ed; }
+
+        .shortcut-btn { transition: all 0.2s; position: relative; overflow: hidden; }
+        .shortcut-btn:active { transform: scale(0.98); }
+        .shortcut-del { position: absolute; right: 0; top: 0; bottom: 0; width: 24px; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.05); opacity: 0; transition: opacity 0.2s; }
+        .shortcut-btn:hover .shortcut-del { opacity: 1; }
+        .search-item { transition: background 0.2s; cursor: pointer; }
+        .search-item:hover { background-color: #f1f5f9; }
+
+        .important-task { background-color: #fef2f2; border-left: 3px solid #ef4444 !important; color: #b91c1c; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.1); animation: slide-in 0.3s ease-out; }
+        .important-task:hover { background-color: #fee2e2; }
+        @keyframes slide-in { from { opacity: 0; transform: translateX(-5px); } to { opacity: 1; transform: translateX(0); } }
+
+        .year-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; padding: 1rem; }
+        .month-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; transition: transform 0.2s; }
+        .month-card:hover { transform: translateY(-2px); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        .mini-day { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; font-size: 10px; cursor: pointer; border-radius: 2px; }
+        .mini-day:hover { background-color: #eff6ff; color: #2563eb; font-weight: bold; }
+        .mini-day.has-event { background-color: #dbeafe; color: #1e40af; font-weight: bold; }
+        .mini-day.is-today { background-color: #ef4444; color: white; }
+    </style>
+</head>
+<body class="bg-white h-screen overflow-hidden text-slate-800 font-sans">
+
+<div id="app-loading"><div class="spinner"></div><div class="mt-4 text-slate-400 text-sm font-medium">日历加载中...</div></div>
+
+<div id="app" class="flex h-full" v-cloak>
+
+    <!-- 左侧栏 -->
+    <aside class="w-80 bg-white border-r border-gray-200 flex flex-col shadow-xl z-40 flex-shrink-0 h-full">
+        <div class="p-5 bg-white border-b border-gray-100 flex-shrink-0">
+            <div class="text-xs text-slate-400 font-bold uppercase tracking-wide mb-1">当前选中</div>
+            <div class="flex items-center justify-between">
+                <div class="text-2xl font-bold text-slate-800 truncate">{{ selectedDateDisplay }}</div>
+                <span v-if="selectedDate === todayStr" class="text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full">Today</span>
+            </div>
+        </div>
+
+        <div class="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-6">
+            
+            <!-- 1. 快捷清单 -->
+            <div class="border-b border-gray-100 pb-6">
+                <h2 class="font-bold text-slate-700 mb-2 text-sm"><i class="fa-solid fa-bolt text-yellow-400 mr-2"></i>快捷清单</h2>
+                <div class="relative">
+                    <input v-model="quickTaskInput" @keyup.enter="addQuickTask" type="text" placeholder="输入普通事项..." 
+                           class="w-full pl-3 pr-8 py-2 bg-gray-50 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                    <button @click="addQuickTask" class="absolute right-1 top-1 text-blue-400 hover:bg-blue-50 p-1.5 rounded transition"><i class="fa-solid fa-plus"></i></button>
+                </div>
+            </div>
+
+            <!-- 2. 重要任务 -->
+            <div class="border-b border-gray-100 pb-6">
+                <h2 class="font-bold text-slate-700 mb-2 text-sm flex items-center gap-2">
+                    <i class="fa-solid fa-fire text-red-500"></i> 重要任务
+                    <span class="text-[9px] bg-red-100 text-red-500 px-1.5 py-0.5 rounded font-normal">自动顺延</span>
+                </h2>
+                <div class="relative">
+                    <input v-model="importantInput" @keyup.enter="addImportantTask" type="text" placeholder="输入重要事项 (如: 还贷)..." 
+                           class="w-full pl-3 pr-8 py-2 bg-red-50 border border-red-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-red-500 transition placeholder-red-300 text-red-700">
+                    <button @click="addImportantTask" class="absolute right-1 top-1 text-red-500 hover:bg-red-100 p-1.5 rounded transition"><i class="fa-solid fa-arrow-up"></i></button>
+                </div>
+            </div>
+
+            <!-- 3. ★★★ 附件与美化 (已移动到这里) ★★★ -->
+            <div class="border-b border-gray-100 pb-6">
+                <h2 class="font-bold text-slate-700 mb-3 text-sm"><i class="fa-solid fa-paperclip text-indigo-500 mr-2"></i>附件与美化</h2>
+                <div class="grid grid-cols-3 gap-2 mb-4">
+                    <button @click="showNoteModal = true" class="flex flex-col items-center justify-center p-2 bg-white border border-gray-200 rounded hover:bg-yellow-50 hover:border-yellow-200 transition group shadow-sm"><i class="fa-solid fa-sticky-note text-yellow-500 mb-1 text-lg group-hover:scale-110 transition"></i> <span class="text-[10px] text-gray-600">记事</span></button>
+                    <button @click="triggerFile('image')" class="flex flex-col items-center justify-center p-2 bg-white border border-gray-200 rounded hover:bg-blue-50 hover:border-blue-200 transition group shadow-sm"><i class="fa-solid fa-image text-blue-500 mb-1 text-lg group-hover:scale-110 transition"></i> <span class="text-[10px] text-gray-600">图片</span></button>
+                    <button @click="triggerFile('file')" class="flex flex-col items-center justify-center p-2 bg-white border border-gray-200 rounded hover:bg-indigo-50 hover:border-indigo-200 transition group shadow-sm"><i class="fa-solid fa-paperclip text-indigo-500 mb-1 text-lg group-hover:scale-110 transition"></i> <span class="text-[10px] text-gray-600">文件</span></button>
+                </div>
+                <div class="flex gap-2 flex-wrap mb-3">
+                    <div v-for="c in bannerColors" :key="c" @click="setDayStyle('color', c)" class="w-6 h-6 rounded-full cursor-pointer shadow-sm hover:scale-110 transition ring-1 ring-gray-200" :style="{backgroundColor: c}"></div>
+                    <label class="w-6 h-6 rounded-full cursor-pointer border border-dashed border-gray-400 flex items-center justify-center hover:border-blue-400 bg-white overflow-hidden"><input type="color" class="opacity-0 w-full h-full cursor-pointer" @input="(e)=>setDayStyle('color', e.target.value)"></label>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <button @click="triggerBannerUpload" class="border border-dashed border-gray-300 rounded py-1.5 text-xs text-gray-500 hover:bg-white hover:border-purple-400 hover:text-purple-500 transition flex items-center justify-center gap-1"><i class="fa-regular fa-image"></i> 上传封面</button>
+                    <button @click="resetDayStyle" class="border border-dashed border-gray-300 rounded py-1.5 text-xs text-gray-500 hover:bg-white hover:border-red-400 hover:text-red-500 transition flex items-center justify-center gap-1"><i class="fa-solid fa-rotate-left"></i> 恢复默认</button>
+                </div>
+            </div>
+
+            <!-- 4. 定制任务/快捷方式 -->
+            <div class="border-b border-gray-100 pb-6">
+                <h2 class="font-bold text-slate-700 mb-3 text-sm"><i class="fa-solid fa-layer-group text-green-500 mr-2"></i>定制任务/快捷方式</h2>
+                <div class="bg-gray-50 p-3 rounded-lg border border-gray-200 shadow-inner space-y-3 mb-4">
+                    <input v-model="repeatTask.title" type="text" placeholder="任务名..." class="w-full px-3 py-2 border rounded text-sm focus:ring-1 focus:ring-green-500 outline-none">
+                    <div class="flex justify-between items-center"><span class="text-xs text-gray-500">标色:</span><div class="flex gap-1"><div v-for="c in colors" :key="c" @click="repeatTask.color = c" :class="['w-4 h-4 rounded-full cursor-pointer border transition', repeatTask.color === c ? 'ring-2 ring-offset-1 ring-gray-400 scale-125' : 'border-transparent']" :style="{backgroundColor: c}"></div></div></div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <select v-model="repeatTask.icon" class="w-full text-xs border rounded p-1.5 bg-white">
+                            <option value="fa-check">默认</option>
+                            <option value="fa-leaf">🍃 生活</option> <!-- ★★★ 新增：生活 ★★★ -->
+                            <option value="fa-pills">💊 药品</option>
+                            <option value="fa-yin-yang">🧘 冥想</option>
+                            <option value="fa-gamepad">🎮 游戏</option>
+                            <option value="fa-heart">❤️ 亲密</option>
+                            <option value="fa-dumbbell">💪 运动</option>
+                            <option value="fa-book">📚 阅读</option>
+                            <option value="fa-briefcase">💼 工作</option>
+                        </select>
+                        <select v-model="repeatTask.frequency" class="w-full text-xs border rounded p-1.5 bg-green-50 text-green-700 font-bold border-green-200"><option value="once">仅一次</option><option value="every_other_day">隔一天</option><option value="daily">每天</option><option value="workday">工作日</option><option value="weekly">每周</option><option value="monthly">每月</option></select>
+                    </div>
+                    <button @click="createShortcut" class="w-full bg-slate-700 hover:bg-slate-800 text-white py-2 rounded text-xs font-medium transition flex items-center justify-center gap-2"><i class="fa-solid fa-save"></i> 保存为快捷方式</button>
+                </div>
+                <div v-if="taskShortcuts.length > 0" class="space-y-2">
+                    <div v-for="(sc, idx) in taskShortcuts" :key="idx" @click="executeShortcut(sc)" class="shortcut-btn flex items-center p-2 bg-white border border-gray-200 rounded shadow-sm cursor-pointer hover:shadow-md hover:border-blue-300">
+                        <div class="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs mr-2" :style="{backgroundColor: sc.color}"><i :class="['fa-solid', sc.icon]"></i></div>
+                        <div class="flex-1 flex flex-col"><span class="text-xs font-bold text-gray-700">{{ sc.title }}</span><span class="text-[9px] text-gray-400">{{ getFreqLabel(sc.frequency) }}</span></div>
+                        <button @click.stop="deleteShortcut(idx)" class="shortcut-del hover:bg-red-50 hover:text-red-500 text-gray-400 rounded-r"><i class="fa-solid fa-trash-can text-xs"></i></button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 5. 数据管理 (已移到底部，并移除了冗余删除按钮) -->
+            <div class="pb-4">
+                <h2 class="font-bold text-slate-700 mb-3 text-sm flex items-center justify-between"><span><i class="fa-solid fa-magnifying-glass text-blue-500 mr-2"></i>数据管理</span></h2>
+                <div class="grid grid-cols-2 gap-2 mb-4">
+                    <button @click="exportData" class="bg-slate-100 hover:bg-slate-200 text-slate-600 py-1.5 rounded text-xs font-bold transition flex items-center justify-center gap-1 border border-slate-200"><i class="fa-solid fa-download"></i> 导出备份</button>
+                    <button @click="triggerImport" class="bg-slate-100 hover:bg-slate-200 text-slate-600 py-1.5 rounded text-xs font-bold transition flex items-center justify-center gap-1 border border-slate-200"><i class="fa-solid fa-upload"></i> 恢复数据</button>
+                </div>
+                <div class="relative mb-2"><input v-model="searchQuery" type="text" placeholder="搜索..." class="w-full pl-8 pr-3 py-2 bg-gray-50 border border-gray-200 rounded text-xs focus:ring-2 focus:ring-blue-500 focus:bg-white transition"><i class="fa-solid fa-search absolute left-2.5 top-2.5 text-gray-400 text-xs"></i></div>
+                <div v-if="searchQuery" class="space-y-1 mb-4"><div v-if="searchResults.length === 0" class="text-xs text-gray-400 text-center py-2">无结果</div><div v-else><div class="flex justify-between items-center mb-1"><span class="text-[10px] text-gray-400">找到 {{ searchResults.length }} 条</span><button @click="deleteByTitle(searchQuery)" class="text-[10px] text-red-500 hover:bg-red-50 px-1 rounded">全删</button></div><div class="max-h-40 overflow-y-auto border border-gray-100 rounded"><div v-for="res in searchResults" :key="res.uniqueId" @click="selectDate(res.date)" class="search-item p-2 border-b border-gray-50 flex justify-between items-center cursor-pointer hover:bg-gray-50"><div class="truncate text-xs w-3/4"><span class="font-bold text-gray-600 mr-1">{{ res.date }}:</span><span>{{ res.task.title }}</span></div></div></div></div></div>
+                
+                <!-- ★★★ 修改：移除了删除按钮的批量记录 ★★★ -->
+                <div v-if="!searchQuery && batchHistory.length > 0">
+                    <div class="space-y-2">
+                        <div v-for="batch in batchHistory" :key="batch.id" class="p-2 bg-slate-50 border border-slate-200 rounded flex justify-between items-center">
+                            <div class="flex flex-col">
+                                <span class="text-xs font-bold text-slate-700">{{ batch.title }}</span>
+                                <span class="text-[9px] text-slate-400">共 {{ batch.count }} 条 ({{ formatTime(batch.timestamp) }})</span>
+                            </div>
+                            <!-- 这里删除了按钮 -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- 右侧主体 -->
+    <main class="flex-1 flex flex-col bg-white relative z-10 h-full overflow-hidden">
+        <header class="flex items-center justify-between px-6 py-3 border-b border-gray-200 bg-white shadow-sm z-50">
+            <div class="flex items-center gap-4"><h1 class="text-xl font-bold text-slate-800 tracking-tight w-32 truncate">{{ currentYear }}年 {{ currentMonth }}月</h1><div v-if="viewMode !== 'year'" class="flex items-center bg-slate-100 rounded-lg shadow-inner border border-slate-200"><button @click="shiftDate(-shiftAmount)" class="nav-btn"><i class="fa-solid fa-arrow-left"></i></button><button @click="goToday" class="nav-btn text-blue-600 bg-white border-l border-r border-slate-200">今天</button><button @click="shiftDate(shiftAmount)" class="nav-btn"><i class="fa-solid fa-arrow-right"></i></button></div></div>
+            <div class="flex items-center bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden"><button @click="viewMode = '1week'" :class="['view-btn', viewMode === '1week' ? 'active' : '']"><i class="fa-solid fa-calendar-day"></i> 1周</button><button @click="viewMode = '2weeks'" :class="['view-btn', viewMode === '2weeks' ? 'active' : '']"><i class="fa-solid fa-calendar-week"></i> 2周</button><button @click="viewMode = '3weeks'" :class="['view-btn', viewMode === '3weeks' ? 'active' : '']"><i class="fa-solid fa-layer-group"></i> 3周</button><button @click="viewMode = 'month'" :class="['view-btn', viewMode === 'month' ? 'active' : '']"><i class="fa-regular fa-calendar"></i> 月</button><button @click="viewMode = 'year'" :class="['view-btn', viewMode === 'year' ? 'active' : '']"><i class="fa-solid fa-calendar-days"></i> 年</button></div>
+            <div class="flex items-center gap-2"><div class="flex bg-slate-50 rounded p-0.5 border border-slate-200 mr-2"><button @click="undo" :disabled="history.length === 0" class="action-btn" title="撤回 (Ctrl+Z)"><i class="fa-solid fa-rotate-left"></i></button><button @click="redo" :disabled="future.length === 0" class="action-btn" title="前进 (Ctrl+Y)"><i class="fa-solid fa-rotate-right"></i></button></div><div class="flex flex-col items-end mr-2"><div class="flex items-center gap-1"><div :class="['w-2 h-2 rounded-full transition-colors', isSaving ? 'bg-green-500 animate-pulse' : 'bg-gray-300']"></div><span class="text-[10px] text-gray-400 font-medium">{{ isSaving ? '保存中' : '已存档' }}</span></div></div><button @click="manualSave" class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md text-sm font-medium shadow-md transition active:scale-95"><i class="fa-solid fa-floppy-disk"></i> 保存</button></div>
+        </header>
+
+        <div v-if="viewMode !== 'year'" class="flex flex-col flex-1 overflow-hidden">
+            <div class="grid grid-cols-7 border-b border-gray-100 bg-white"><div v-for="(item, i) in dynamicWeekHeaders" :key="i" :class="['text-center py-2 text-xs font-bold uppercase', (item.isWeekend) ? 'weekend-text' : 'text-slate-400', i === 3 && viewMode.includes('week') && !item.isWeekend ? 'text-blue-600' : '']">{{ item.label }}</div></div>
+            <div class="flex-1 grid grid-cols-7 auto-rows-fr overflow-y-auto bg-white custom-scrollbar pb-20">
+                <div v-for="(day, index) in visibleDays" :key="day.dateStr" @click="selectDate(day.dateStr)" :class="['day-cell flex flex-col min-h-[160px] relative cursor-pointer group border-b border-r border-gray-100', isSelected(day.dateStr) ? 'center-cell' : (day.isWeekend ? 'weekend-bg' : 'hover:bg-slate-50 bg-white')]">
+                    <div class="day-banner w-full relative flex-shrink-0" :style="getDayBannerStyle(day.dateStr)"><div class="absolute left-2 top-2 flex items-center gap-1"><span :class="['w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold shadow-sm transition-transform duration-300', day.isToday ? 'today-number' : (day.isWeekend ? 'text-orange-500 bg-white/90 backdrop-blur-sm' : 'bg-white/90 text-slate-700 backdrop-blur-sm')]">{{ day.dayNum }}</span><span v-if="day.isToday" class="text-[10px] text-red-600 bg-white/80 px-1.5 rounded font-bold backdrop-blur-sm shadow-sm">今天</span></div></div>
+                    <div class="flex-1 p-2 space-y-1.5 overflow-y-auto max-h-[30vh] custom-scrollbar">
+                        <div v-for="item in day.items" :key="item.id" class="relative group/item">
+                            <button @click.stop="deleteItem(day.dateStr, item.id)" class="absolute -right-1 -top-1 w-4 h-4 bg-slate-100 hover:bg-red-500 text-slate-400 hover:text-white rounded-full flex items-center justify-center text-[10px] opacity-0 group-hover/item:opacity-100 z-10 transition shadow"><i class="fa-solid fa-xmark"></i></button>
+                            
+                            <div v-if="item.type === 'task' || item.type === 'important'" 
+                                 @click.stop="toggleTask(day.dateStr, item.id, item)" 
+                                 :class="['p-1.5 rounded text-xs flex items-center gap-2 transition border-l-[3px] shadow-sm hover:brightness-95', 
+                                          item.completed ? 'completed-task bg-gray-50 border-gray-300' : (item.type==='important' ? 'important-task' : 'bg-white border-gray-100')]"
+                                 :style="item.type!=='important' && !item.completed ? {borderLeftColor: item.color} : {}">
+                                <div :class="['w-3.5 h-3.5 rounded-sm border flex items-center justify-center flex-shrink-0', item.completed ? 'border-gray-400' : (item.type==='important' ? 'border-red-400 bg-red-50' : 'border-gray-300')]">
+                                    <i v-if="item.completed" class="fa-solid fa-check text-[8px] text-gray-500"></i>
+                                </div>
+                                <span class="truncate flex-1 font-medium">{{ item.title }}</span>
+                                <i v-if="item.type==='important' && !item.completed" class="fa-solid fa-fire text-[10px] text-red-500 animate-pulse"></i>
+                                <i v-else-if="item.icon && item.icon!=='fa-check'" :class="['fa-solid', item.icon, 'text-[10px] opacity-50']" :style="{color: item.color}"></i>
+                            </div>
+                            
+                            <div v-if="item.type === 'note'" class="bg-yellow-50 p-2 rounded text-xs border border-yellow-100 text-yellow-800 relative"><p class="line-clamp-2">{{ item.content }}</p></div>
+                            <div v-if="item.type === 'image'" class="h-16 rounded overflow-hidden border border-gray-200 relative"><img :src="item.src" class="w-full h-full object-cover"></div>
+                            <div v-if="item.type === 'file'" class="flex items-center gap-1 bg-slate-50 p-1 rounded border border-slate-200 text-slate-600 text-xs"><i class="fa-solid fa-file"></i> <span class="truncate">{{ item.name }}</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div v-else class="flex-1 overflow-y-auto bg-slate-50 p-6"><div class="max-w-6xl mx-auto year-grid"><div v-for="monthOffset in 12" :key="monthOffset" class="month-card"><div class="text-sm font-bold text-slate-700 mb-2 border-b border-gray-100 pb-1">{{ getYearMonthTitle(monthOffset - 1) }}</div><div class="grid grid-cols-7 gap-1"><div v-for="(d, i) in ['日','一','二','三','四','五','六']" :key="d" :class="['text-[9px] text-center', (i===0||i===6)?'text-orange-400':'text-gray-300']">{{d}}</div><div v-for="blank in getMonthBlanks(monthOffset - 1)" :key="'b'+blank"></div><div v-for="dayNum in getMonthDays(monthOffset - 1)" :key="dayNum" @click="jumpFromYearView(monthOffset - 1, dayNum)" :class="['mini-day', isYearDayToday(monthOffset - 1, dayNum) ? 'is-today' : '', hasEvents(monthOffset - 1, dayNum) ? 'has-event' : '']">{{ dayNum }}</div></div></div></div></div>
+    </main>
+
+    <div v-if="showNoteModal" class="fixed inset-0 bg-black/30 z-50 flex items-center justify-center backdrop-blur-sm"><div class="bg-white rounded-lg shadow-2xl w-80 p-4"><h3 class="font-bold mb-2 text-sm">添加记事</h3><textarea v-model="tempNote" class="w-full h-24 border rounded p-2 text-sm bg-yellow-50 focus:outline-none" placeholder="内容..."></textarea><div class="flex justify-end gap-2 mt-3"><button @click="showNoteModal = false" class="px-3 py-1 text-xs text-gray-500 hover:bg-gray-100 rounded">取消</button><button @click="addNote" class="px-3 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600">保存</button></div></div></div>
+    <input type="file" ref="fileInput" class="hidden-input" @change="handleFileSelect">
+    <input type="file" ref="bannerInput" class="hidden-input" accept="image/*" @change="handleBannerUpload">
+    <input type="file" ref="importInput" class="hidden-input" accept=".json" @change="handleImportData">
+
+</div>
+
+<script>
+    const { createApp, ref, computed, onMounted, onUnmounted, watch, nextTick } = Vue;
+
+    createApp({
+        setup() {
+            const viewMode = ref('3weeks');
+            const focusDate = ref(new Date());
+            const todayStr = ref('');
+            const events = ref({});
+            const daySettings = ref({});
+            const isSaving = ref(false);
+            
+            const taskShortcuts = ref([]);
+            const batchHistory = ref([]);
+            const history = ref([]); const future = ref([]); const isInternalChange = ref(false);
+
+            const quickTaskInput = ref('');
+            const importantInput = ref('');
+            const repeatTask = ref({ title: '', color: '#10b981', icon: 'fa-check', frequency: 'once' });
+            const searchQuery = ref('');
+            const showNoteModal = ref(false); const tempNote = ref('');
+            const fileInput = ref(null); const bannerInput = ref(null); const importInput = ref(null); const pendingFileType = ref('');
+            
+            const colors = ['#ef4444', '#f97316', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#64748b'];
+            const bannerColors = ['#fca5a5', '#fdba74', '#fcd34d', '#86efac', '#93c5fd', '#c4b5fd', '#f0abfc', '#cbd5e1'];
+            const baseWeekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+
+            const hideLoader = () => { const loader = document.getElementById('app-loading'); if(loader) loader.style.display = 'none'; };
+
+            const recordState = () => { if (isInternalChange.value) return; if (history.value.length > 20) history.value.shift(); history.value.push(JSON.stringify({ e: events.value, s: daySettings.value, ts: taskShortcuts.value, bh: batchHistory.value })); future.value = []; };
+            const applyState = (state) => { const s = JSON.parse(state); isInternalChange.value = true; events.value = s.e; daySettings.value = s.s; taskShortcuts.value = s.ts || []; batchHistory.value = s.bh || []; nextTick(() => isInternalChange.value = false); };
+            const undo = () => { if (history.value.length === 0) return; future.value.push(JSON.stringify({ e: events.value, s: daySettings.value, ts: taskShortcuts.value, bh: batchHistory.value })); applyState(history.value.pop()); };
+            const redo = () => { if (future.value.length === 0) return; history.value.push(JSON.stringify({ e: events.value, s: daySettings.value, ts: taskShortcuts.value, bh: batchHistory.value })); applyState(future.value.pop()); };
+            const mutate = (action) => { recordState(); action(); autoSave(); };
+            const autoSave = () => { isSaving.value = true; saveData(); setTimeout(() => isSaving.value = false, 800); };
+            const manualSave = () => { saveData(); alert('所有数据已强制写入本地存储！'); };
+            const loadData = () => {
+                const e = localStorage.getItem('v5_events'); const s = localStorage.getItem('v5_settings'); const t = localStorage.getItem('v5_shortcuts'); const b = localStorage.getItem('v5_batches');
+                if(e) events.value = JSON.parse(e); if(s) daySettings.value = JSON.parse(s); if(t) taskShortcuts.value = JSON.parse(t); if(b) batchHistory.value = JSON.parse(b);
+            };
+            const saveData = () => {
+                localStorage.setItem('v5_events', JSON.stringify(events.value)); localStorage.setItem('v5_settings', JSON.stringify(daySettings.value)); localStorage.setItem('v5_shortcuts', JSON.stringify(taskShortcuts.value)); localStorage.setItem('v5_batches', JSON.stringify(batchHistory.value));
+            };
+
+            const visibleDays = computed(() => {
+                const days = []; let start, count;
+                
+                // 1. 收集幽灵任务
+                const ghostTasks = [];
+                for(const dStr in events.value) {
+                    events.value[dStr].forEach(item => {
+                        if(item.type === 'important' && !item.completed && dStr < todayStr.value) {
+                            ghostTasks.push({ ...item, originDate: dStr });
+                        }
+                    });
+                }
+
+                if (viewMode.value !== 'month') {
+                    const center = new Date(focusDate.value); start = new Date(center);
+                    if (viewMode.value === '1week') { start.setDate(center.getDate() - 3); count = 7; }
+                    else if (viewMode.value === '2weeks') { start.setDate(center.getDate() - 3); count = 14; }
+                    else { start.setDate(center.getDate() - 10); count = 21; }
+                } else {
+                    const year = focusDate.value.getFullYear(); const month = focusDate.value.getMonth(); const firstDay = new Date(year, month, 1); start = new Date(firstDay); start.setDate(1 - firstDay.getDay()); count = 42;
+                }
+
+                for (let i = 0; i < count; i++) { 
+                    const d = new Date(start); d.setDate(start.getDate() + i); const dStr = formatDate(d);
+                    const dayOfWeek = d.getDay();
+                    let dayItems = events.value[dStr] ? [...events.value[dStr]] : [];
+                    
+                    if (dStr === todayStr.value) {
+                        dayItems = [...ghostTasks, ...dayItems];
+                    }
+                    
+                    days.push({ 
+                        dateStr: dStr, dayNum: d.getDate(), dayOfWeek: dayOfWeek, 
+                        isWeekend: (dayOfWeek===0 || dayOfWeek===6), isToday: dStr === todayStr.value, 
+                        items: dayItems 
+                    }); 
+                }
+                return days;
+            });
+
+            const getYearMonthTitle = (offset) => { const d = new Date(focusDate.value.getFullYear(), 0 + offset, 1); return `${d.getMonth()+1}月`; };
+            const getMonthBlanks = (offset) => { return new Date(focusDate.value.getFullYear(), offset, 1).getDay(); };
+            const getMonthDays = (offset) => { return new Date(focusDate.value.getFullYear(), offset + 1, 0).getDate(); };
+            const isYearDayToday = (offset, d) => formatDate(new Date(focusDate.value.getFullYear(), offset, d)) === todayStr.value;
+            const hasEvents = (offset, d) => { const k = formatDate(new Date(focusDate.value.getFullYear(), offset, d)); return events.value[k] && events.value[k].length > 0; };
+            const jumpFromYearView = (offset, d) => { focusDate.value = new Date(focusDate.value.getFullYear(), offset, d); viewMode.value = '3weeks'; };
+            
+            const dynamicWeekHeaders = computed(() => {
+                const headers = (viewMode.value === 'month' || visibleDays.value.length === 0) 
+                    ? baseWeekDays.map((label, idx) => ({ label, isWeekend: idx===0 || idx===6 }))
+                    : visibleDays.value.slice(0, 7).map(d => ({ label: baseWeekDays[d.dayOfWeek], isWeekend: d.isWeekend }));
+                return headers;
+            });
+            
+            const shiftAmount = computed(() => viewMode.value === '1week' ? 7 : (viewMode.value === 'month' ? 30 : 7));
+            const shiftDate = (offset) => { const n = new Date(focusDate.value); if(viewMode.value==='month' && Math.abs(offset)>10) n.setMonth(n.getMonth()+(offset>0?1:-1)); else n.setDate(n.getDate()+offset); focusDate.value=n; };
+            const selectDate = (dStr) => focusDate.value = new Date(dStr); const goToday = () => focusDate.value = new Date();
+            const formatDate = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            const selectedDateDisplay = computed(() => formatDate(focusDate.value)); const isSelected = (dStr) => dStr === formatDate(focusDate.value);
+            const currentYear = computed(() => focusDate.value.getFullYear()); const currentMonth = computed(() => focusDate.value.getMonth() + 1);
+            const addEventRaw = (date, item) => { if (!events.value[date]) events.value[date] = []; events.value[date].push(item); };
+            
+            const addImportantTask = () => {
+                if(importantInput.value) {
+                    mutate(() => {
+                        const d = formatDate(new Date());
+                        if(!events.value[d]) events.value[d] = [];
+                        events.value[d].push({ id: Date.now(), type: 'important', title: importantInput.value, completed: false });
+                    });
+                    importantInput.value = '';
+                }
+            };
+
+            const addQuickTask = () => { if(quickTaskInput.value) { mutate(() => { const d = formatDate(focusDate.value); if(!events.value[d]) events.value[d]=[]; events.value[d].push({id: Date.now(), type:'task', title:quickTaskInput.value, color:'#94a3b8', icon:'fa-check', completed:false}); }); quickTaskInput.value=''; }};
+            const createShortcut = () => { if (!repeatTask.value.title) return alert('请输入任务名称'); mutate(() => taskShortcuts.value.push({ ...repeatTask.value })); repeatTask.value.title = ''; };
+            const deleteShortcut = (idx) => { if(confirm('删除快捷方式？')) mutate(() => taskShortcuts.value.splice(idx, 1)); };
+            const executeShortcut = (shortcut) => { mutate(() => { const startDate = new Date(formatDate(focusDate.value)); const config = shortcut; const batchId = Date.now().toString(); let count = 0; for (let i = 0; i < 90; i++) { const target = new Date(startDate); target.setDate(startDate.getDate() + i); let add = false; const day = target.getDay(); const freq = config.frequency; if (freq === 'once') add = (i === 0); else if (freq === 'every_other_day') add = (i % 2 === 0); else if (freq === 'daily') add = true; else if (freq === 'workday') add = (day !== 0 && day !== 6); else if (freq === 'weekly') add = (i % 7 === 0); else if (freq === 'monthly') add = (target.getDate() === startDate.getDate()); if (add) { const dk = formatDate(target); if (!events.value[dk]) events.value[dk] = []; events.value[dk].push({ id: Date.now()+i+Math.random(), type: 'task', title: config.title, color: config.color, icon: config.icon, completed: false, batchId: batchId }); count++; } if (freq === 'once' && i > 0) break; } batchHistory.value.unshift({ id: batchId, title: config.title, count: count, timestamp: Date.now() }); }); };
+            const deleteBatch = (bid) => { if(!confirm('删除整批？')) return; mutate(() => { for(const d in events.value) events.value[d]=events.value[d].filter(x=>x.batchId!==bid); batchHistory.value=batchHistory.value.filter(b=>b.id!==bid); }); };
+            const searchResults = computed(() => { if (!searchQuery.value.trim()) return []; const r=[]; const q=searchQuery.value.toLowerCase(); for(const d in events.value) events.value[d].forEach(i=>{ if(i.title?.toLowerCase().includes(q)) r.push({date:d, task:i, uniqueId:i.id}); }); return r.slice(0,50); });
+            const deleteByTitle = (t) => { if(!confirm('删除所有结果？')) return; mutate(() => { const q=t.toLowerCase(); for(const d in events.value) events.value[d]=events.value[d].filter(i=>!i.title?.toLowerCase().includes(q)); searchQuery.value=''; }); };
+            const formatTime = (ts) => { const d = new Date(ts); return `${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`; };
+            const getFreqLabel = (f) => { const map = { once:'一次', daily:'每天', every_other_day:'隔天', workday:'工作日', weekly:'每周', monthly:'每月' }; return map[f] || f; };
+            const setDayStyle = (t, v) => mutate(() => daySettings.value[formatDate(focusDate.value)] = { type: t, value: v });
+            const resetDayStyle = () => mutate(() => delete daySettings.value[formatDate(focusDate.value)]);
+            const getDayBannerStyle = (dStr) => { const s = daySettings.value[dStr]; if (s?.type === 'color') return { backgroundColor: s.value, height: '36px' }; if (s?.type === 'image') return { backgroundImage: `url(${s.value})`, height: '80px' }; return { backgroundColor: '#e0f2fe', height: '36px' }; };
+            const triggerFile = (t) => { pendingFileType.value=t; fileInput.value.click(); }; const triggerBannerUpload = () => bannerInput.value.click();
+            const handleFileSelect = (e) => { const f = e.target.files[0]; if(!f) return; const r = new FileReader(); r.onload = (ev) => mutate(() => { const d=formatDate(focusDate.value); if(!events.value[d]) events.value[d]=[]; events.value[d].push({id:Date.now(), type:pendingFileType.value==='image'?'image':'file', src:ev.target.result, name:f.name}); }); pendingFileType.value==='image' ? r.readAsDataURL(f) : r.readAsText(f); e.target.value=''; };
+            const handleBannerUpload = (e) => { const f=e.target.files[0]; const r=new FileReader(); r.onload=(ev)=>mutate(()=>daySettings.value[formatDate(focusDate.value)]={type:'image', value:ev.target.result}); r.readAsDataURL(f); e.target.value=''; };
+            
+            const toggleTask = (clickedDate, id, item) => { 
+                mutate(() => { 
+                    const originalDate = item.originDate || clickedDate;
+                    const task = events.value[originalDate]?.find(x => x.id === id);
+                    if (task) {
+                        task.completed = !task.completed;
+                        if (task.type === 'important' && task.completed && originalDate !== clickedDate) {
+                            events.value[originalDate] = events.value[originalDate].filter(x => x.id !== id);
+                            if (!events.value[clickedDate]) events.value[clickedDate] = [];
+                            events.value[clickedDate].push(task);
+                            delete task.originDate; 
+                        }
+                    }
+                }); 
+            };
+            
+            const deleteItem = (d, id) => mutate(() => { events.value[d]=events.value[d].filter(x=>x.id!==id); });
+            const addNote = () => { if(tempNote.value) { mutate(() => { const d=formatDate(focusDate.value); if(!events.value[d]) events.value[d]=[]; events.value[d].push({id:Date.now(), type:'note', content:tempNote.value}); }); showNoteModal.value=false; tempNote.value=''; }};
+            const exportData = () => { const data = { events: events.value, settings: daySettings.value, shortcuts: taskShortcuts.value, batches: batchHistory.value, exportDate: new Date().toLocaleString() }; const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `calendar_backup_${todayStr.value}.json`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); };
+            const triggerImport = () => importInput.value.click();
+            const handleImportData = (e) => { const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (ev) => { try { const data = JSON.parse(ev.target.result); if (confirm(`确认从备份恢复数据？`)) { events.value = data.events || {}; daySettings.value = data.settings || {}; taskShortcuts.value = data.shortcuts || []; batchHistory.value = data.batches || []; saveData(); alert('数据恢复成功！'); } } catch (err) { alert('备份文件无效'); } }; reader.readAsText(file); e.target.value = ''; };
+            
+            const handleKey = (e) => { if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return; if (e.key === 'ArrowLeft') shiftDate(-1); if (e.key === 'ArrowRight') shiftDate(1); if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); } if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); redo(); } };
+
+            onMounted(() => { 
+                const now = new Date(); todayStr.value = formatDate(now); focusDate.value = now; 
+                loadData(); 
+                window.addEventListener('keydown', handleKey);
+                setTimeout(hideLoader, 500); 
+            });
+            onUnmounted(() => window.removeEventListener('keydown', handleKey));
+
+            return {
+                viewMode, selectedDateDisplay, selectedDate: computed(()=>formatDate(focusDate.value)), todayStr, visibleDays, dynamicWeekHeaders, events, quickTaskInput, repeatTask, colors, bannerColors, goToday, selectDate, isSelected, shiftDate, shiftAmount, currentYear, currentMonth, getDayBannerStyle, setDayStyle, resetDayStyle, createShortcut, executeShortcut, taskShortcuts, deleteShortcut, getFreqLabel, addQuickTask, toggleTask, deleteItem, showNoteModal, tempNote, addNote, fileInput, bannerInput, triggerFile, triggerBannerUpload, handleFileSelect, handleBannerUpload, undo, redo, history, future, batchHistory, deleteBatch, searchQuery, searchResults, deleteByTitle, isSaving, manualSave, exportData, triggerImport, importInput, handleImportData,
+                getYearMonthTitle, getMonthBlanks, getMonthDays, isYearDayToday, hasEvents, jumpFromYearView,
+                importantInput, addImportantTask, formatTime
+            };
+        }
+    }).mount('#app');
+</script>
+</body>
+</html>
