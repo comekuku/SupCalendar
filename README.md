@@ -1,11 +1,12 @@
 # SupCalendar
 a calendar design by Gemini 3
+
 # 📅 Super Calendar (超级日历)
 
 一个极简主义、本地优先 (Local-First) 的个人时间管理工具。
 **单文件架构，无后端，无数据库，数据完全隐私。**
 
-[👉 点击在线使用](https://你的用户名.github.io/super-calendar/) 
+[👉 点击在线使用](https://comekuku.github.io/SupCalendar/) 
 *(请将上面的链接替换为你第四步生成的那个网址)*
 
 ## ✨ 核心功能
@@ -25,3 +26,5 @@ a calendar design by Gemini 3
 ### 方法二：Docker 部署 (NAS/软路由)
 ```bash
 docker run -d --name calendar -p 8888:80 -v $(pwd)/index.html:/usr/share/nginx/html/index.html nginx:alpine
+
+Made with ❤️ by [comekuku]
