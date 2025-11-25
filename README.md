@@ -27,4 +27,4 @@ a calendar design by Gemini 3
 ```bash
 docker run -d --name calendar -p 8888:80 -v $(pwd)/index.html:/usr/share/nginx/html/index.html nginx:alpine
 
-Made with ❤️ by [comekuku]
+## Made with ❤️ by [comekuku]
